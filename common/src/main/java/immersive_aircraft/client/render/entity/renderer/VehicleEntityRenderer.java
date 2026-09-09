@@ -4,6 +4,8 @@ import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.math.Axis;
 import immersive_aircraft.client.render.entity.renderer.utils.BBModelRenderer;
 import immersive_aircraft.client.render.entity.renderer.utils.ModelPartRenderHandler;
+import immersive_aircraft.data.VehicleSkin;
+import immersive_aircraft.data.VehicleSkinDataLoader;
 import immersive_aircraft.entity.VehicleEntity;
 import immersive_aircraft.resources.BBModelLoader;
 import immersive_aircraft.resources.bbmodel.BBAnimationVariables;
@@ -26,6 +28,12 @@ public abstract class VehicleEntityRenderer<T extends VehicleEntity> extends Ent
     protected abstract ModelPartRenderHandler<T> getModel(T entity);
 
     protected abstract ResourceLocation getModelId();
+
+    protected ResourceLocation getModelId(T entity) {
+        return VehicleSkinDataLoader.getClientSkin(entity.identifier, entity.getVehicleSkin())
+                .map(skin -> skin.model())
+                .orElseGet(this::getModelId);
+    }
 
 
     @Override
@@ -64,13 +72,26 @@ public abstract class VehicleEntityRenderer<T extends VehicleEntity> extends Ent
         entity.setAnimationVariables(tickDelta);
 
         // Render model
-        BBModel bbModel = BBModelLoader.MODELS.get(getModelId());
+        ResourceLocation defaultModelId = getModelId();
+        VehicleSkin selectedSkin = VehicleSkinDataLoader.getClientSkin(entity.identifier, entity.getVehicleSkin()).orElse(null);
+        ResourceLocation selectedModelId = selectedSkin == null ? defaultModelId : selectedSkin.model();
+        BBModel bbModel = BBModelLoader.MODELS.get(selectedModelId);
+        if (bbModel == null && !selectedModelId.equals(defaultModelId)) {
+            bbModel = BBModelLoader.MODELS.get(defaultModelId);
+            selectedSkin = null;
+        }
         if (bbModel != null) {
             float health = entity.getHealth();
             float r = health * 0.6f + 0.4f;
             float g = health * 0.4f + 0.6f;
             float b = health * 0.4f + 0.6f;
+            matrixStack.pushPose();
+            if (selectedSkin != null) {
+                float scale = selectedSkin.scale();
+                matrixStack.scale(scale, scale, scale);
+            }
             BBModelRenderer.renderModel(bbModel, matrixStack, vertexConsumerProvider, light, time, entity, getModel(entity), r, g, b, 1.0f);
+            matrixStack.popPose();
         }
     }
 
@@ -90,7 +111,10 @@ public abstract class VehicleEntityRenderer<T extends VehicleEntity> extends Ent
         if (!entity.shouldRender(x, y, z)) {
             return false;
         }
-        AABB box = entity.getBoundingBoxForCulling().inflate(getCullingBoundingBoxInflation());
+        double inflation = VehicleSkinDataLoader.getClientSkin(entity.identifier, entity.getVehicleSkin())
+                .map(skin -> Math.max(getCullingBoundingBoxInflation(), skin.scale()))
+                .orElseGet(this::getCullingBoundingBoxInflation);
+        AABB box = entity.getBoundingBoxForCulling().inflate(inflation);
         return frustum.isVisible(box);
     }
 
@@ -105,4 +129,3 @@ public abstract class VehicleEntityRenderer<T extends VehicleEntity> extends Ent
         return TEXTURE;
     }
 }
-

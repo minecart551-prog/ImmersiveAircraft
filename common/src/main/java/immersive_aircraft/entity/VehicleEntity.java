@@ -10,6 +10,8 @@ import immersive_aircraft.client.KeyBindings;
 import immersive_aircraft.cobalt.network.NetworkHandler;
 import immersive_aircraft.config.Config;
 import immersive_aircraft.data.VehicleDataLoader;
+import immersive_aircraft.data.VehicleSkin;
+import immersive_aircraft.data.VehicleSkinDataLoader;
 import immersive_aircraft.entity.misc.BoundingBoxDescriptor;
 import immersive_aircraft.entity.misc.PositionDescriptor;
 import immersive_aircraft.entity.misc.VehicleData;
@@ -69,6 +71,8 @@ public abstract class VehicleEntity extends Entity {
     public final ResourceLocation identifier;
 
     private static final EntityDataAccessor<Float> DATA_HEALTH = SynchedEntityData.defineId(VehicleEntity.class, EntityDataSerializers.FLOAT);
+    private static final EntityDataAccessor<String> DATA_VEHICLE_SKIN = SynchedEntityData.defineId(VehicleEntity.class, EntityDataSerializers.STRING);
+    private static final String VEHICLE_SKIN_TAG = "VehicleSkin";
 
     protected static final EntityDataAccessor<Integer> DAMAGE_WOBBLE_TICKS = SynchedEntityData.defineId(VehicleEntity.class, EntityDataSerializers.INT);
     protected static final EntityDataAccessor<Integer> DAMAGE_WOBBLE_SIDE = SynchedEntityData.defineId(VehicleEntity.class, EntityDataSerializers.INT);
@@ -153,8 +157,38 @@ public abstract class VehicleEntity extends Entity {
         return VehicleDataLoader.get(identifier);
     }
 
+    @Nullable
+    public ResourceLocation getVehicleSkin() {
+        String value = entityData.get(DATA_VEHICLE_SKIN);
+        return value.isEmpty() ? null : ResourceLocation.tryParse(value);
+    }
+
+    public void setVehicleSkin(@Nullable ResourceLocation skin) {
+        entityData.set(DATA_VEHICLE_SKIN, skin == null ? "" : skin.toString());
+    }
+
+    @Nullable
+    private VehicleSkin getActiveSkin() {
+        return (level().isClientSide
+                ? VehicleSkinDataLoader.getClientSkin(identifier, getVehicleSkin())
+                : VehicleSkinDataLoader.getServerSkin(identifier, getVehicleSkin())).orElse(null);
+    }
+
+    @Nullable
+    private List<PositionDescriptor> getSkinSeats() {
+        VehicleSkin skin = getActiveSkin();
+        return skin == null || skin.seats().isEmpty() ? null : skin.seats();
+    }
+
+    @Nullable
+    private List<BoundingBoxDescriptor> getSkinBoundingBoxes() {
+        VehicleSkin skin = getActiveSkin();
+        return skin == null || skin.boundingBoxes().isEmpty() ? null : skin.boundingBoxes();
+    }
+
     public int getPassengerSpace() {
-        return getVehicleData().getPassengerPositions().size();
+        List<PositionDescriptor> skinSeats = getSkinSeats();
+        return skinSeats == null ? getVehicleData().getPassengerPositions().size() : skinSeats.size();
     }
 
     public VehicleEntity(EntityType<? extends VehicleEntity> entityType, Level world, boolean canExplodeOnCrash) {
@@ -199,6 +233,7 @@ public abstract class VehicleEntity extends Entity {
         entityData.define(DAMAGE_WOBBLE_STRENGTH, 0.0f);
         entityData.define(DATA_HEALTH, 1.0f);
         entityData.define(BOOST, 0);
+        entityData.define(DATA_VEHICLE_SKIN, "");
     }
 
     @Override
@@ -369,6 +404,15 @@ public abstract class VehicleEntity extends Entity {
 
     @Override
     public void tick() {
+        // Revalidate every server tick so a newly seated driver can never keep
+        // using a skin they do not own. A null selection resolves to the
+        // data-pack-defined default skin on clients.
+        if (!level().isClientSide && getVehicleSkin() != null
+                && getControllingPassenger() instanceof Player player
+                && !VehicleSkinDataLoader.canSelect(player, identifier, getVehicleSkin())) {
+            setVehicleSkin(null);
+        }
+
         if (tickCount % 10 == 0) {
             secondLastX = lastX;
             secondLastY = lastY;
@@ -568,11 +612,15 @@ public abstract class VehicleEntity extends Entity {
         Matrix4f transform = getVehicleTransform();
 
         int size = getPassengers().size() - 1;
-        List<List<PositionDescriptor>> positions = getVehicleData().getPassengerPositions();
-        if (size < positions.size()) {
+        List<PositionDescriptor> skinSeats = getSkinSeats();
+        List<List<PositionDescriptor>> passengerLayouts = getVehicleData().getPassengerPositions();
+        List<PositionDescriptor> positions = skinSeats != null
+                ? skinSeats
+                : size < passengerLayouts.size() ? passengerLayouts.get(size) : List.of();
+        if (!positions.isEmpty()) {
             int i = getPassengers().indexOf(passenger);
-            if (i >= 0 && i < positions.get(size).size()) {
-                PositionDescriptor positionDescriptor = positions.get(size).get(i);
+            if (i >= 0 && i < positions.size()) {
+                PositionDescriptor positionDescriptor = positions.get(i);
 
                 float x = positionDescriptor.x();
                 float y = positionDescriptor.y();
@@ -665,6 +713,10 @@ public abstract class VehicleEntity extends Entity {
     @Override
     protected void addAdditionalSaveData(@NotNull CompoundTag tag) {
         tag.putFloat("VehicleHealth", getHealth());
+        ResourceLocation skin = getVehicleSkin();
+        if (skin != null) {
+            tag.putString(VEHICLE_SKIN_TAG, skin.toString());
+        }
     }
 
     @Override
@@ -672,6 +724,9 @@ public abstract class VehicleEntity extends Entity {
         if (tag.contains("VehicleHealth")) {
             setHealth(tag.getFloat("VehicleHealth"));
         }
+        setVehicleSkin(tag.contains(VEHICLE_SKIN_TAG, Tag.TAG_STRING)
+                ? ResourceLocation.tryParse(tag.getString(VEHICLE_SKIN_TAG))
+                : null);
     }
 
     protected void addItemTag(@NotNull CompoundTag tag) {
@@ -681,6 +736,10 @@ public abstract class VehicleEntity extends Entity {
         if (hasCustomName()) {
             displayTag.putString("Name", Component.Serializer.toJson(getCustomName()));
         }
+        ResourceLocation skin = getVehicleSkin();
+        if (skin != null) {
+            tag.putString(VEHICLE_SKIN_TAG, skin.toString());
+        }
     }
 
     protected void readItemTag(@NotNull CompoundTag tag) {
@@ -689,6 +748,9 @@ public abstract class VehicleEntity extends Entity {
         if (displayTag.contains("Name", Tag.TAG_STRING)) {
             setCustomName(Component.Serializer.fromJson(displayTag.getString("Name")));
         }
+        setVehicleSkin(tag.contains(VEHICLE_SKIN_TAG, Tag.TAG_STRING)
+                ? ResourceLocation.tryParse(tag.getString(VEHICLE_SKIN_TAG))
+                : null);
     }
 
     @Override
@@ -938,7 +1000,11 @@ public abstract class VehicleEntity extends Entity {
     }
 
     public List<AABB> getAdditionalShapes() {
-        return getVehicleData().getBoundingBoxes().stream().map(this::getOffsetBoundingBox).toList();
+        List<BoundingBoxDescriptor> skinBoundingBoxes = getSkinBoundingBoxes();
+        List<BoundingBoxDescriptor> boundingBoxes = skinBoundingBoxes == null
+                ? getVehicleData().getBoundingBoxes()
+                : skinBoundingBoxes;
+        return boundingBoxes.stream().map(this::getOffsetBoundingBox).toList();
     }
 
     public List<AABB> getShapes() {
