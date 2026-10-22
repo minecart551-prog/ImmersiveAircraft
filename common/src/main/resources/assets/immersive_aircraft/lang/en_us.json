@@ -24,11 +24,11 @@
   "key.immersive_aircraft.dismount": "Dismount",
   "key.immersive_aircraft.boost": "Rocket boost",
 
-  "entity.immersive_aircraft.airship": "Airship",
-  "entity.immersive_aircraft.cargo_airship": "Cargo Airship",
+  "entity.immersive_aircraft.airship": "Flying Car",
+  "entity.immersive_aircraft.cargo_airship": "Cargo AV",
   "entity.immersive_aircraft.warship": "Warship",
   "entity.immersive_aircraft.biplane": "Biplane",
-  "entity.immersive_aircraft.gyrodyne": "Gyrodyne",
+  "entity.immersive_aircraft.gyrodyne": "Flying Bike",
   "entity.immersive_aircraft.quadrocopter": "Quadrocopter",
   "entity.immersive_aircraft.bamboo_hopper": "Bamboo Hopper",
 
@@ -67,11 +67,11 @@
   "item.immersive_aircraft.item.upgrade": "Aircraft Upgrade",
   "item.immersive_aircraft.item.weapon": "Aircraft Weapon",
 
-  "item.immersive_aircraft.airship": "Airship",
-  "item.immersive_aircraft.cargo_airship": "Cargo Airship",
+  "item.immersive_aircraft.airship": "Flying Car",
+  "item.immersive_aircraft.cargo_airship": "Cargo AV",
   "item.immersive_aircraft.warship": "Warship",
   "item.immersive_aircraft.biplane": "Biplane",
-  "item.immersive_aircraft.gyrodyne": "Gyrodyne",
+  "item.immersive_aircraft.gyrodyne": "Flying Bike",
   "item.immersive_aircraft.quadrocopter": "Quadrocopter",
   "item.immersive_aircraft.bamboo_hopper": "Bamboo Hopper",
 
