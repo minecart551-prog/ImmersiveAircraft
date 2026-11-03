@@ -19,4 +19,30 @@ public abstract class EntityMixin {
             }
         }
     }
+
+    /**
+     * Makes aircraft behave like multi-rider vehicles with respect to logout.
+     *
+     * <p>Vanilla answers {@code true} here for a vehicle carrying exactly one player, and all three
+     * consumers of that answer assume the mount travels inside the player's {@code RootVehicle} NBT
+     * instead of the world:
+     * <ul>
+     *   <li>{@code Entity#shouldBeSaved()} - stops writing the aircraft to chunk data,</li>
+     *   <li>{@code PlayerList#remove()} - strips it from the world on logout,</li>
+     *   <li>{@code ServerPlayer#addAdditionalSaveData()} - writes the {@code RootVehicle} copy.</li>
+     * </ul>
+     *
+     * <p>AntiLogout keeps the disconnecting player in the world, so those three steps run out of
+     * order and the aircraft can end up neither saved nor restored; {@code placeNewPlayer()} then
+     * discards it and the player falls from their old altitude. Answering {@code false} keeps the
+     * aircraft in the world and in chunk data, and skips the {@code RootVehicle} copy that would
+     * only race with it - {@link VehiclePersistence} re-attaches the player on rejoin instead.
+     */
+    @Inject(method = "hasExactlyOnePlayerPassenger", at = @At("HEAD"), cancellable = true)
+    public void immersive_aircraft$aircraftSurvivesLogout(CallbackInfoReturnable<Boolean> cir) {
+        Entity self = (Entity) (Object) this;
+        if (self instanceof VehicleEntity) {
+            cir.setReturnValue(false);
+        }
+    }
 }

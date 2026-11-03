@@ -645,6 +645,16 @@ public abstract class VehicleEntity extends Entity {
             }
         }
 
+        // Nothing usable within one block of the vehicle's own Y - the side column is
+        // obstructed (parked against a wall), sits over a gap, or the vehicle is airborne.
+        // Vanilla's fallback drops the passenger on the roof (boundingBox.maxY), but players
+        // deliberately don't collide with aircraft (EntityMixin#canCollideWith), so they'd
+        // fall straight through it and eat fall damage for the height of the vehicle.
+        if (onGround()) {
+            return new Vec3(ox, getY(), oz);
+        }
+
+        // Airborne: keep the vanilla behaviour and let the passenger make a real fall.
         return super.getDismountLocationForPassenger(passenger);
     }
 
