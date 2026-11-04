@@ -37,7 +37,9 @@ public class PlayerListMixin {
     )
     private boolean immersive_aircraft$keepAircraftOnLogout(Entity vehicle) {
         if (vehicle instanceof VehicleEntity) {
-            return false;
+            // During shutdown (isCurrentlySaving) keep vanilla's strip so the RootVehicle
+            // restore path stays exactly as vanilla intends - no duplicate save on restart.
+            return ((PlayerList) (Object) this).getServer().isCurrentlySaving();
         }
         return vehicle.hasExactlyOnePlayerPassenger();
     }
