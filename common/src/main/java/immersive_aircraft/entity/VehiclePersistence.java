@@ -28,10 +28,11 @@ import java.util.UUID;
  * {@code PlayerList#remove()} only runs later, from {@code getPlayerForLogin()}. The three steps no
  * longer happen in a consistent order, so the aircraft regularly ends up neither saved nor restored.
  *
- * <p>We sidestep the handshake entirely: {@code EntityMixin} makes aircraft behave like multi-rider
- * vehicles (always saved to chunk data, never stripped on logout), and this class remembers which
- * aircraft each player was on so it can re-attach them the moment they rejoin. The aircraft is never
- * destroyed, so it cannot disappear.
+ * <p>We sidestep the worst of it: {@link immersive_aircraft.mixin.PlayerListMixin} stops the logout
+ * path from stripping the aircraft out of the world, so there is nothing left to lose, and this
+ * class remembers which aircraft each player was on so it can re-attach them the moment they rejoin.
+ * Everything vanilla does for a restart - writing {@code RootVehicle} and rebuilding from it - is
+ * left untouched, so a server restart still restores the mount through vanilla's own machinery.
  */
 public final class VehiclePersistence {
 
