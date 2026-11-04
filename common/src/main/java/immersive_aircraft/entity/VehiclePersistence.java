@@ -1,5 +1,6 @@
 package immersive_aircraft.entity;
 
+import immersive_aircraft.mixin.ServerPlayerDisconnectedAccessor;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.effect.MobEffectInstance;
 import net.minecraft.world.effect.MobEffects;
@@ -29,8 +30,13 @@ public final class VehiclePersistence {
     /** How long after joining re-attachment keeps being retried (covers async chunk/entity loading). */
     private static final long REATTACH_MS = 20000;
 
-    /** Consecutive ticks Y must not decrease before the Slow Falling crutch is taken away. */
-    private static final int LANDING_STABLE_TICKS = 5;
+    /**
+     * Consecutive ticks Y must hold steady - <em>after</em> the player was actually seen falling -
+     * before the Slow Falling crutch is taken away. Primary landing signal is {@code onGround()};
+     * this is the fallback for settling on water etc. Generous, because right after joining the
+     * client can freeze for seconds while loading terrain, during which Y simply does not move.
+     */
+    private static final int LANDING_STABLE_TICKS = 20;
 
     /**
      * Player UUID to the UUID of the {@link VehicleEntity} they were last riding.
@@ -54,6 +60,8 @@ public final class VehiclePersistence {
     private static final class FallTracker {
         double lastY;
         int stableTicks;
+        /** Whether the client has been observed actually descending since joining. */
+        boolean decreased;
         /** Whether the crutch effect currently on the player is one we applied (and may strip). */
         boolean ours;
 
@@ -81,6 +89,9 @@ public final class VehiclePersistence {
             return;
         }
 
+        // AntiLogout's ghost: still in PlayerList#getPlayers() with the vanilla disconnected flag set.
+        boolean ghost = ((ServerPlayerDisconnectedAccessor) player).immersive_aircraft$isDisconnected();
+
         Long until = REATTACH_UNTIL.get(playerUuid);
         if (until != null) {
             if (System.currentTimeMillis() >= until) {
@@ -96,29 +107,46 @@ public final class VehiclePersistence {
                     return;
                 }
             }
-        } else {
+        } else if (!ghost) {
             // On foot outside the window: a stale record must not resurface later.
+            // A ghost keeps its record - it is what puts the player back on their aircraft at rejoin.
             LAST_VEHICLE.remove(playerUuid);
         }
 
-        // Slow Falling crutch: keep it while Y keeps decreasing, drop it once the player has
-        // stopped falling (reached ground).
+        // Slow Falling crutch: keep it for the whole rejoin descent, take it away once the player
+        // has actually landed.
         FallTracker tracker = FALL_TRACK.get(playerUuid);
         if (tracker == null) {
+            // Disconnected AntiLogout ghost without a mount under it: it runs vanilla physics via
+            // AntiLogout's doTick pump, so give it the same crutch instead of letting it plummet.
+            if (ghost && !player.onGround()) {
+                player.addEffect(new MobEffectInstance(MobEffects.SLOW_FALLING, 200, 0, false, true));
+                FALL_TRACK.put(playerUuid, new FallTracker(player.getY(), true));
+            }
             return;
         }
         double y = player.getY();
         if (y < tracker.lastY - 1.0E-4) {
+            tracker.decreased = true;
             tracker.stableTicks = 0;
-            if (player.getEffect(MobEffects.SLOW_FALLING) == null) {
-                player.addEffect(new MobEffectInstance(MobEffects.SLOW_FALLING, 100, 0, false, true));
-                tracker.ours = true;
-            }
-        } else if (++tracker.stableTicks >= LANDING_STABLE_TICKS) {
+        } else {
+            tracker.stableTicks++;
+        }
+        tracker.lastY = y;
+
+        // Reached ground (primary), or settled after a real fall (water etc.).
+        if (player.onGround() || (tracker.decreased && tracker.stableTicks >= LANDING_STABLE_TICKS)) {
             stopSlowFalling(player);
             return;
         }
-        tracker.lastY = y;
+
+        // Still airborne: keep the effect on them no matter what. The login sequence can freeze
+        // Y for seconds (terrain load, move packets not yet arriving) and the effect itself
+        // expires - neither may ever end the protection while they are still falling.
+        if (player.getEffect(MobEffects.SLOW_FALLING) == null) {
+            player.addEffect(new MobEffectInstance(MobEffects.SLOW_FALLING, 200, 0, false, true));
+            tracker.ours = true;
+        }
     }
 
     /**
@@ -126,14 +154,16 @@ public final class VehiclePersistence {
      * restore has already run.
      */
     public static void onJoin(ServerPlayer player) {
+        // Slow Falling arriving with the player is our crutch from the ghost session, carried in
+        // their saved data - strip it so every rejoin starts from a clean slate (this may also
+        // drop a potion effect they logged out with; rejoin behavior is meant to be predictable).
+        player.removeEffect(MobEffects.SLOW_FALLING);
+
         if (player.isPassenger()) {
             return; // already mounted; no crutch needed
         }
-        boolean ours = player.getEffect(MobEffects.SLOW_FALLING) == null;
-        FALL_TRACK.put(player.getUUID(), new FallTracker(player.getY(), ours));
-        if (ours) {
-            player.addEffect(new MobEffectInstance(MobEffects.SLOW_FALLING, 100, 0, false, true));
-        }
+        FALL_TRACK.put(player.getUUID(), new FallTracker(player.getY(), true));
+        player.addEffect(new MobEffectInstance(MobEffects.SLOW_FALLING, 200, 0, false, true));
         REATTACH_UNTIL.put(player.getUUID(), System.currentTimeMillis() + REATTACH_MS);
         player.resetFallDistance();
     }
