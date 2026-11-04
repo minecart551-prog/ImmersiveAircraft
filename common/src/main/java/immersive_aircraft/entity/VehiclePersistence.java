@@ -36,7 +36,7 @@ import java.util.UUID;
 public final class VehiclePersistence {
 
     /** How long after joining a player is shielded from the fall they may inherit from a lost mount. */
-    private static final long JOIN_GRACE_MS = 3000;
+    private static final long JOIN_GRACE_MS = 20000;
 
     /**
      * Player UUID to the UUID of the {@link VehicleEntity} they were last riding.
