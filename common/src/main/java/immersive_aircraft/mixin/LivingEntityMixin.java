@@ -1,16 +1,13 @@
 package immersive_aircraft.mixin;
 
 import immersive_aircraft.entity.VehicleEntity;
-import immersive_aircraft.entity.VehiclePersistence;
 import net.minecraft.server.level.ServerPlayer;
-import net.minecraft.world.damagesource.DamageSource;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.LivingEntity;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
-import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
 /**
  * Fixes players taking lethal fall damage right after leaving an aircraft.
@@ -51,22 +48,6 @@ public abstract class LivingEntityMixin {
                     player.getX(), player.getY(), player.getZ(),
                     player.getYRot(), player.getXRot()
             );
-        }
-    }
-
-    /**
-     * Never let the rejoin itself be lethal.
-     *
-     * <p>If the aircraft a player left could not be found again (destroyed while they were gone, or
-     * sitting in an unloaded chunk) they reappear at their old altitude with no mount. That fall is
-     * a side effect of logging out, not something the player chose to do, so it must not kill them.
-     */
-    @Inject(method = "causeFallDamage", at = @At("HEAD"), cancellable = true)
-    private void immersive_aircraft$ignoreFallJustAfterRejoin(float fallDistance, float multiplier, DamageSource source, CallbackInfoReturnable<Boolean> cir) {
-        LivingEntity self = (LivingEntity) (Object) this;
-
-        if (self instanceof ServerPlayer player && VehiclePersistence.inJoinGrace(player)) {
-            cir.setReturnValue(false);
         }
     }
 }
