@@ -63,7 +63,7 @@ public class GyrodyneEntity extends Rotorcraft {
 
         // launch that engine
         if (getEngineTarget() < 1.0f) {
-            setEngineTarget(Math.max(0.0f, Math.min(1.0f, getEngineTarget() + pressingInterpolatedZ.getValue() * 0.05f - 0.035f)));
+            setEngineTarget(Math.max(0.0f, Math.min(1.0f, getEngineTarget() + pressingInterpolatedZ.getValue() * 0.25f - 0.007f)));
             updateEnginePowerTooltip();
 
             if (getEngineTarget() == 1.0) {
